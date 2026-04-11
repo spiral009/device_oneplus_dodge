@@ -1,0 +1,17 @@
+# ============================================================
+# FIX: Vendor type declarations for OPPO/OnePlus /proc nodes
+#
+# These types are referenced in system_server.te fixes above
+# but must be DECLARED in vendor sepolicy, not system sepolicy.
+# If your vendor sepolicy already declares these types, skip
+# this file. If not, add these declarations.
+#
+# File location in ROM tree:
+#   device/<vendor>/<device>/sepolicy/vendor_proc.te
+#   OR wherever your OEM declares vendor proc types, e.g.:
+#   vendor/oplus/sepolicy/common/vendor_proc.te
+# ============================================================
+
+# Declare vendor proc types if not already declared elsewhere
+# (check your existing vendor sepolicy before adding these)
+type vendor_proc_oppo_secure_common_file, fs_type, proc_type;
