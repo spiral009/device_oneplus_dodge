@@ -14,30 +14,31 @@ $(call inherit-product, device/oneplus/dodge/device.mk)
 # Inherit some common Lineage stuff.
 $(call inherit-product, vendor/lineage/config/common_full_phone.mk)
 
+# Device config
+TARGET_HAS_UDFPS := true
+TARGET_SUPPORTS_QUICK_TAP := true
+TARGET_DISABLE_EPPE := true
+BYPASS_CHARGE_SUPPORTED := true
+EVO_BUILD_TYPE := Official
+
+# Feed props ON. Keep persist.alpha.fusion_light seeded 0 — enable with
+# setprop after boot (never seed 1 until cold-boot proven).
+TARGET_FUSIONLIGHT_ENABLE := true
+
+
 PRODUCT_NAME := lineage_dodge
 PRODUCT_DEVICE := dodge
 PRODUCT_MANUFACTURER := OnePlus
 PRODUCT_BRAND := OnePlus
 PRODUCT_MODEL := CPH2653
 
-#Lunaris Stuff
-LUNARIS_BUILD_TYPE := OFFICIAL
-TARGET_HAS_UDFPS := true
-TARGET_SUPPORTS_QUICK_TAP := true
-TARGET_DISABLE_EPPE := true
-WITH_GMS := true
-TARGET_INCLUDE_LIVE_WALLPAPERS := true
-TARGET_CUSTOM_UDFPS := true
-SURFACE_FLINGER_BOOST := true
 
-TARGET_SUPPORTED_REFRESH_RATES := 60,90,120
-BYPASS_CHARGE_SUPPORTED := true
 
 PRODUCT_GMS_CLIENTID_BASE := android-oneplus
 
 PRODUCT_BUILD_PROP_OVERRIDES += \
-    BuildDesc="qssi_64-user 16 BP2A.250605.015 1775048494038 release-keys" \
-    BuildFingerprint=OnePlus/CPH2653EEA/OP5D55L1:16/BP2A.250605.015/V.R4T3.535a14b-3024561-302455e:user/release-keys \
+    BuildDesc="qssi_64-user 16 BP2A.250605.015 1780491741931 release-keys" \
+    BuildFingerprint=OnePlus/CPH2653EEA/OP5D55L1:16/BP2A.250605.015/V.R4T3.26073a0-1df561-1f78cb:user/release-keys \
     DeviceName=OP5D55L1 \
     DeviceProduct=CPH2653 \
     SystemDevice=OP5D55L1 \

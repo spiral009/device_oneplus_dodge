@@ -24,24 +24,15 @@ namespace_imports = [
 ]
 
 blob_fixups: blob_fixups_user_type = {
-    'odm/etc/camera/CameraHWConfiguration.config': blob_fixup()
-        .regex_replace(r'(enableSWfdForThirdCamUnit += )TRUE', r'\1FALSE')
-        .regex_replace(r'(fdSupport += )TRUE;', r'\1FALSE;'),
     'odm/etc/init/init.camera_process.rc': blob_fixup()
         .regex_replace('    delete_recursion', '    #delete_recursion'),
-    (
-        'odm/etc/libnfc-mtp-SN220.conf_23821',
-        'odm/etc/libnfc-mtp-SN220.conf_23893'
-    ): blob_fixup()
-        .regex_replace('(NXPLOG_.*_LOGLEVEL)=0x03', '\\1=0x02')
-        .regex_replace('NFC_DEBUG_ENABLED=1', 'NFC_DEBUG_ENABLED=0'),
     'odm/firmware/fastchg/23821/charging_hyper_mode_config.txt': blob_fixup()
         .regex_replace(r"(PROJECT:=)23893", r"\g<1>23821"),
     'odm/lib64/libAlgoProcess.so': blob_fixup()
         .replace_needed('android.hardware.graphics.common-V5-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
     (
         'odm/lib64/libAncHumanSegFigureFusion.so',
-        'odm/lib64/libEIS.so',
+        'odm/lib64/libEISLive.so',
         'odm/lib64/libHIS.so',
         'odm/lib64/libOPAlgoCamAiBeautyFaceRetouchCn.so',
         'odm/lib64/libOPAlgoCamAiUnifySkin.so',
@@ -54,25 +45,83 @@ blob_fixups: blob_fixups_user_type = {
         .clear_symbol_version('AHardwareBuffer_lockPlanes')
         .clear_symbol_version('AHardwareBuffer_release')
         .clear_symbol_version('AHardwareBuffer_unlock'),
-    'odm/lib64/libextensionlayer.so': blob_fixup()
-        .replace_needed('vendor.oplus.hardware.performance-V1-ndk_platform.so', 'vendor.oplus.hardware.performance-V1-ndk.so'),
+    # TIME-LAPSE / hyperlapse saves solid green. LibEIS reads a bogus pixel format from the
+    # buffer handle (often the frame width, e.g. 4096) and passes it to
+    # ShareBuffer_CreateFromNativeHandle. eglCreateImageKHR then fails (EGL_BAD_ATTRIBUTE /
+    # 12300) and the deferred hyperlapse path encodes empty green frames. Force
+    # HAL_PIXEL_FORMAT_YCbCr_420_888 (0x23) at the four CreateFromNativeHandle call sites:
+    # ldr w4,[xN,#0x2c] -> mov w4,#0x23 (52800464).
+    'odm/lib64/libEIS.so': blob_fixup()
+        .clear_symbol_version('AHardwareBuffer_acquire')
+        .clear_symbol_version('AHardwareBuffer_allocate')
+        .clear_symbol_version('AHardwareBuffer_describe')
+        .clear_symbol_version('AHardwareBuffer_lock')
+        .clear_symbol_version('AHardwareBuffer_lockPlanes')
+        .clear_symbol_version('AHardwareBuffer_release')
+        .clear_symbol_version('AHardwareBuffer_unlock')
+        .binary_regex_replace(
+            b'\x84\x2e\x40\xb9\xe1\x8b\x44\x29\xe3\x2f\x40\xb9\x05\x40\x80\x52',
+            b'\x64\x04\x80\x52\xe1\x8b\x44\x29\xe3\x2f\x40\xb9\x05\x40\x80\x52',
+        )
+        .binary_regex_replace(
+            b'\x04\x2f\x40\xb9\x05\x20\x80\x52\x45\x00\xa0\x72\xe0\x03\x18\xaa',
+            b'\x64\x04\x80\x52\x05\x20\x80\x52\x45\x00\xa0\x72\xe0\x03\x18\xaa',
+        )
+        .binary_regex_replace(
+            b'\xff\x03\x00\xf9\x28\x10\x40\xf9\x04\x2c\x40\xb9\x01\x89\x40\x29\x86\xc2\xff\x97',
+            b'\xff\x03\x00\xf9\x28\x10\x40\xf9\x64\x04\x80\x52\x01\x89\x40\x29\x86\xc2\xff\x97',
+        )
+        .binary_regex_replace(
+            b'\xff\x03\x00\xf9\x28\x10\x40\xf9\x04\x2c\x40\xb9\x01\x89\x40\x29\x39\xc2\xff\x97',
+            b'\xff\x03\x00\xf9\x28\x10\x40\xf9\x64\x04\x80\x52\x01\x89\x40\x29\x39\xc2\xff\x97',
+        ),
+
+    # Master/Pro-mode photos come out with RED/BLUE swapped. Pro mode captures RAW10 and the
+    # OnePlus OCCE tone-mapper (libBasicTonePhoto.so) runs an OpenGL shader whose body contains a
+    # U/V (Cb/Cr) reorder `dstYuv = vec4(dstYuv.r, dstYuv.b, dstYuv.g, 1.0)`. On this port the net
+    # result is a single uncompensated chroma swap -> R/B swapped JPEG. Undo the swap in the
+    # embedded GLSL (length-preserving). Normal/Photo mode does NOT use BasicTone, so this only
+    # affects the (otherwise crisp) Master/Pro path..
+    'odm/lib64/libBasicTonePhoto.so': blob_fixup()
+        .binary_regex_replace(
+            b'vec4\\(dstYuv\\.r, dstYuv\\.b, dstYuv\\.g, 1\\.0\\)',
+            b'vec4(dstYuv.r, dstYuv.g, dstYuv.b, 1.0)',
+        ),
     'odm/lib64/libsensorbridge.so': blob_fixup()
         .replace_needed('android.hardware.sensors-V2-ndk.so', 'android.hardware.sensors-V3-ndk.so'),
-    'vendor/etc/libnfc-nci.conf': blob_fixup()
-        .regex_replace('NFC_DEBUG_ENABLED=1', 'NFC_DEBUG_ENABLED=0'),
     (
         'vendor/lib64/camera/components/com.qti.node.dewarp.so',
         'vendor/lib64/hw/com.qti.chi.override.so',
         'vendor/lib64/libcamximageformatutils.so',
         'vendor/lib64/libchifeature2.so',
-        'vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so',
     ): blob_fixup()
         .replace_needed('android.hardware.graphics.allocator-V1-ndk.so', 'android.hardware.graphics.allocator-V2-ndk.so'),
+    'vendor/lib64/vendor.qti.hardware.camera.offlinecamera-service-impl.so': blob_fixup()
+        .replace_needed('android.hardware.graphics.allocator-V1-ndk.so', 'android.hardware.graphics.allocator-V2-ndk.so')
+        # convertAndImportBuffer reads the offline-metadata buffer size from the SnapHandle's
+        # aligned_width_in_bytes field (handle+0x1c), but on this build that field holds a bogus
+        # stride (e.g. 512) for the metadata BLOB while the real byte size is in the next field
+        # (aligned_width_in_pixels, handle+0x20). That truncates the metadata copy to 512 bytes
+        # and crashes CamX (MetaBuffer::AllocateBuffer). Patch the load to read +0x20 instead of
+        # +0x1c:  ldr w27,[x21,#0x1c] (bb1e40b9) -> ldr w27,[x21,#0x20] (bb2240b9).
+        # 12-byte anchor = ldr x21,[x12,#0x30]; ldr w27,[x21,#0x1c]; ldr w0,[x21,#0xc].
+        .binary_regex_replace(
+            b'\x95\x19\x40\xf9\xbb\x1e\x40\xb9\xa0\x0e\x40\xb9',
+            b'\x95\x19\x40\xf9\xbb\x22\x40\xb9\xa0\x0e\x40\xb9',
+        ),
     (
         'vendor/lib64/libcamxcoreutils.so',
         'vendor/lib64/libcamxods.so',
     ): blob_fixup()
         .replace_needed('libtinyxml2.so', 'libtinyxml2-v34.so'),
+    'odm/lib64/libsharebuffer_impl.so': blob_fixup()
+        .replace_needed('libutils.so', 'libutils-stock.so')
+        .replace_needed('libui.so', 'libui-stock.so'),
+    'vendor/lib64/libui-stock.so': blob_fixup()
+        .replace_needed('android.hardware.graphics.common-V5-ndk.so', 'android.hardware.graphics.common-V7-ndk.so'),
+    'odm/etc/camera/CameraHWConfiguration.config': blob_fixup()
+        .regex_replace('enableSWfdForThirdCamUnit   = FALSE', 'enableSWfdForThirdCamUnit   = TRUE')
+        .regex_replace('fdSupport                 = FALSE;', 'fdSupport                 = TRUE;'),
 }  # fmt: skip
 
 module = ExtractUtilsModule(

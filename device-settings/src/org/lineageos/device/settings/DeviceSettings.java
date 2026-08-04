@@ -17,17 +17,21 @@
 
 package org.lineageos.device.settings;
 
+import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.MenuItem;
 import android.widget.FrameLayout;
 import android.widget.CheckBox;
+import android.widget.ListView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.preference.ListPreference;
@@ -39,12 +43,16 @@ import androidx.preference.SwitchPreferenceCompat;
 import com.android.settingslib.widget.SettingsBasePreferenceFragment;
 
 import java.util.Arrays;
+import java.util.HashSet;
 
 import org.lineageos.device.settings.Constants;
 import org.lineageos.device.settings.display.DisplayModeController;
 import org.lineageos.device.settings.display.HbmController;
 import org.lineageos.device.settings.display.PwmController;
+import org.lineageos.device.settings.display.SunlightBoostController;
+import org.lineageos.device.settings.utils.AppPreferencesHelper;
 import org.lineageos.device.settings.utils.FileUtils;
+import org.lineageos.device.settings.utils.PackageListAdapter.PackageItem;
 
 public class DeviceSettings extends SettingsBasePreferenceFragment
         implements Preference.OnPreferenceChangeListener {
@@ -56,8 +64,16 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
     private ListPreference mMiddleKeyPref;
     private ListPreference mBottomKeyPref;
 
+    private static final String[] SLIDER_APP_KEYS = {
+        Constants.KEY_NOTIF_SLIDER_APP_TOP,
+        Constants.KEY_NOTIF_SLIDER_APP_MIDDLE,
+        Constants.KEY_NOTIF_SLIDER_APP_BOTTOM
+    };
+
     private SwitchPreferenceCompat mOnePulsePWMSwitch;
     private SwitchPreferenceCompat mHbmSwitch;
+    private SwitchPreferenceCompat mSunlightBoostSwitch;
+    private ListPreference mHapticProfilePref;
 
     private HbmController mHbmController;
     private PwmController mPwmController;
@@ -89,10 +105,25 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
             mHbmSwitch.setEnabled(false);
         }
 
+        mSunlightBoostSwitch = (SwitchPreferenceCompat) findPreference(Constants.KEY_SUNLIGHT_BOOST);
+        if (FileUtils.isFileWritable(Constants.NODE_HBM)) {
+            mSunlightBoostSwitch.setOnPreferenceChangeListener(this);
+        } else {
+            mSunlightBoostSwitch.setEnabled(false);
+        }
+
         // Sync UI state based on current HBM/PWM state
         syncHbmPwmState();
 
         initNotificationSliderPreference();
+
+        mHapticProfilePref = (ListPreference) findPreference(Constants.KEY_HAPTIC_PROFILE);
+        if (mHapticProfilePref != null) {
+            String currentProfile = SystemProperties.get(Constants.PROP_HAPTIC_PROFILE, Constants.HAPTIC_PROFILE_DEFAULT);
+            mHapticProfilePref.setValue(currentProfile);
+            mHapticProfilePref.setSummary(mHapticProfilePref.getEntry());
+            mHapticProfilePref.setOnPreferenceChangeListener(this);
+        }
     }
 
     @Override
@@ -142,6 +173,15 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
         registerPreferenceListener(Constants.KEY_NOTIF_SLIDER_ACTION_MIDDLE);
         registerPreferenceListener(Constants.KEY_NOTIF_SLIDER_ACTION_BOTTOM);
 
+        for (String key : SLIDER_APP_KEYS) {
+            Preference pref = findPreference(key);
+            pref.setOnPreferenceClickListener(p -> {
+                showSliderAppSelectionDialog(key);
+                return true;
+            });
+            updateSliderAppSummary(key);
+        }
+
         ListPreference usagePref = (ListPreference) findPreference(
                 Constants.KEY_NOTIF_SLIDER_USAGE);
         handleSliderUsageChange(usagePref.getValue());
@@ -178,6 +218,12 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
                 // Re-enable HBM toggle
                 mHbmSwitch.setEnabled(FileUtils.isFileWritable(Constants.NODE_HBM));
             }
+            return true;
+        } else if (preference == mSunlightBoostSwitch) {
+            boolean enabled = (Boolean) newValue;
+            // Persist before the controller re-reads the preference
+            sharedPrefs.edit().putBoolean(Constants.KEY_SUNLIGHT_BOOST, enabled).commit();
+            SunlightBoostController.getInstance(getContext()).updateState();
             return true;
         } else if (preference == mHbmSwitch) {
             boolean enabled = (Boolean) newValue;
@@ -223,6 +269,15 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
                 return notifySliderActionChange(1, (String) newValue);
             case Constants.KEY_NOTIF_SLIDER_ACTION_BOTTOM:
                 return notifySliderActionChange(2, (String) newValue);
+            case Constants.KEY_HAPTIC_PROFILE:
+                String profileValue = (String) newValue;
+                SystemProperties.set(Constants.PROP_HAPTIC_PROFILE, profileValue);
+                ListPreference hapticPref = (ListPreference) preference;
+                int index = hapticPref.findIndexOfValue(profileValue);
+                if (index >= 0) {
+                    hapticPref.setSummary(hapticPref.getEntries()[index]);
+                }
+                return true;
             default:
                 break;
         }
@@ -325,6 +380,7 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
     }
 
     private boolean handleSliderUsageChange(String newValue) {
+        updateSliderRowVisibility(newValue);
         switch (newValue) {
             case Constants.NOTIF_SLIDER_FOR_NOTIFICATION:
                 return updateSliderActions(
@@ -350,9 +406,91 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
                 return updateSliderActions(
                         R.array.notification_ringer_slider_mode_entries,
                         R.array.notification_ringer_slider_mode_entry_values);
+            case Constants.NOTIF_SLIDER_FOR_APPLAUNCH:
+                return updateSliderActions(
+                        R.array.notification_slider_applaunch_entries,
+                        R.array.notification_slider_applaunch_entry_values);
             default:
                 return false;
         }
+    }
+
+    /** In app-launch mode the three action rows are replaced by app pickers. */
+    private void updateSliderRowVisibility(String usage) {
+        boolean appMode = Constants.NOTIF_SLIDER_FOR_APPLAUNCH.equals(usage);
+
+        setPrefVisible(Constants.KEY_NOTIF_SLIDER_ACTION_TOP, !appMode);
+        setPrefVisible(Constants.KEY_NOTIF_SLIDER_ACTION_MIDDLE, !appMode);
+        setPrefVisible(Constants.KEY_NOTIF_SLIDER_ACTION_BOTTOM, !appMode);
+
+        for (String key : SLIDER_APP_KEYS) {
+            setPrefVisible(key, appMode);
+        }
+    }
+
+    private void setPrefVisible(String key, boolean visible) {
+        Preference pref = findPreference(key);
+        if (pref != null) {
+            pref.setVisible(visible);
+        }
+    }
+
+    private void updateSliderAppSummary(String key) {
+        Preference pref = findPreference(key);
+        if (pref == null) {
+            return;
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
+        String pkg = prefs.getString(key, "");
+        if (TextUtils.isEmpty(pkg)) {
+            pref.setSummary(R.string.notification_slider_app_none);
+            return;
+        }
+        PackageManager pm = getContext().getPackageManager();
+        try {
+            pref.setSummary(pm.getApplicationInfo(pkg, 0).loadLabel(pm));
+        } catch (PackageManager.NameNotFoundException e) {
+            pref.setSummary(R.string.notification_slider_app_none);
+        }
+    }
+
+    private void showSliderAppSelectionDialog(String key) {
+        if (getActivity() == null || getActivity().isFinishing()) {
+            return;
+        }
+
+        final ListView list = new ListView(getActivity());
+        HashSet<String> excludedPackages = new HashSet<>();
+        excludedPackages.add(getContext().getPackageName());
+        AppPreferencesHelper.setupPackageListAdapter(list, excludedPackages, getContext());
+
+        final Dialog dialog = new AlertDialog.Builder(getActivity())
+                .setTitle(R.string.notification_slider_app_dialog_title)
+                .setView(list)
+                .setNeutralButton(R.string.notification_slider_app_clear,
+                        (d, which) -> setSliderApp(key, ""))
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            PackageItem info = (PackageItem) parent.getItemAtPosition(position);
+            setSliderApp(key, info.packageName);
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
+
+    private void setSliderApp(String key, String packageName) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getContext());
+        prefs.edit().putString(key, packageName).commit();
+        updateSliderAppSummary(key);
+
+        // Push the new package set to the KeyHandler in system_server
+        ListPreference usagePref = (ListPreference) findPreference(
+                Constants.KEY_NOTIF_SLIDER_USAGE);
+        sendUpdateBroadcast(getActivity().getApplicationContext(),
+                Integer.parseInt(usagePref.getValue()), getCurrentSliderActions());
     }
 
     private boolean handleSliderUsageDefaultsChange(String newValue) {
@@ -451,10 +589,20 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
         Intent intent = new Intent(Constants.ACTION_UPDATE_SLIDER_SETTINGS);
         intent.putExtra(Constants.EXTRA_SLIDER_USAGE, usage);
         intent.putExtra(Constants.EXTRA_SLIDER_ACTIONS, actions);
+        intent.putExtra(Constants.EXTRA_SLIDER_APPS, getSliderApps(context));
         intent.setFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
         context.sendBroadcastAsUser(intent, UserHandle.CURRENT);
         Log.i(TAG, "update slider usage " + usage + " with actions: " +
                 Arrays.toString(actions));
+    }
+
+    private static String[] getSliderApps(Context context) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        return new String[] {
+            prefs.getString(Constants.KEY_NOTIF_SLIDER_APP_TOP, ""),
+            prefs.getString(Constants.KEY_NOTIF_SLIDER_APP_MIDDLE, ""),
+            prefs.getString(Constants.KEY_NOTIF_SLIDER_APP_BOTTOM, "")
+        };
     }
 
     public static void restoreSliderStates(Context context) {
@@ -521,6 +669,8 @@ public class DeviceSettings extends SettingsBasePreferenceFragment
                 return R.array.config_defaultSliderActionsForRinger;
             case Constants.NOTIF_SLIDER_FOR_NOTIFICATION_RINGER:
                 return R.array.config_defaultSliderActionsForNotificationRinger;
+            case Constants.NOTIF_SLIDER_FOR_APPLAUNCH:
+                return R.array.config_defaultSliderActionsForApplaunch;
             default:
                 return 0;
         }

@@ -1,0 +1,10 @@
+cc_binary {
+    name: "tango_zygote_launcher",
+    srcs: ["tango_zygote_launcher.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    compile_multilib: "64",
+    // Standalone helper; not part of any image. Built on demand via `m`.
+}

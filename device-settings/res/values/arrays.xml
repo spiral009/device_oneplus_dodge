@@ -23,6 +23,7 @@
         <item>@string/notification_slider_for_rotation</item>
         <item>@string/notification_slider_for_ringer</item>
         <item>@string/notification_slider_for_notification_ringer</item>
+        <item>@string/notification_slider_for_applaunch</item>
     </string-array>
 
     <string-array name="notification_slider_usage_entry_values" translatable="false">
@@ -32,6 +33,15 @@
         <item>4</item>
         <item>5</item>
         <item>6</item>
+        <item>7</item>
+    </string-array>
+
+    <string-array name="notification_slider_applaunch_entries" translatable="false">
+        <item>@string/notification_slider_applaunch_launch</item>
+    </string-array>
+
+    <string-array name="notification_slider_applaunch_entry_values" translatable="false">
+        <item>70</item>
     </string-array>
 
     <string-array name="notification_slider_mode_entries" translatable="false">
@@ -214,5 +224,22 @@
         <item>60</item>
         <item>90</item>
         <item>120</item>
+    </string-array>
+
+    <!-- Haptic Profiles -->
+    <string-array name="haptic_profile_entries">
+        <item>@string/haptic_profile_op13gentle</item>
+        <item>@string/haptic_profile_op13crisp</item>
+        <item>@string/haptic_profile_yaap_gentle</item>
+        <item>@string/haptic_profile_yaap_crisp</item>
+        <item>@string/haptic_profile_richtap</item>
+    </string-array>
+
+    <string-array name="haptic_profile_values" translatable="false">
+        <item>op13gentle</item>
+        <item>op13crisp</item>
+        <item>gentle</item>
+        <item>crisp</item>
+        <item>richtap</item>
     </string-array>
 </resources>
