@@ -34,6 +34,9 @@ TARGET_INCLUDE_LIVE_WALLPAPERS := true
 TARGET_CUSTOM_UDFPS := true
 SURFACE_FLINGER_BOOST := true
 
+# VINTF: Disable kernel requirement enforcement (CONFIG_MODULE_FORCE_UNLOAD=y and CONFIG_SYSVIPC=y are intentional)
+PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
+
 # Display soong config (required for qtidisplay_defaults → display_headers)
 SOONG_CONFIG_NAMESPACES += qtidisplay
 SOONG_CONFIG_qtidisplay := default headless gralloc4 drmpp llvmsa smmu_proxy ubwcp_headers neo var3 composer_version

@@ -25,6 +25,9 @@ EVO_BUILD_TYPE := Official
 # setprop after boot (never seed 1 until cold-boot proven).
 TARGET_FUSIONLIGHT_ENABLE := true
 
+# VINTF: Disable kernel requirement enforcement (CONFIG_MODULE_FORCE_UNLOAD=y and CONFIG_SYSVIPC=y are intentional)
+PRODUCT_OTA_ENFORCE_VINTF_KERNEL_REQUIREMENTS := false
+
 
 PRODUCT_NAME := lineage_dodge
 PRODUCT_DEVICE := dodge

@@ -54,6 +54,7 @@ BOARD_VENDOR_SEPOLICY_DIRS += device/lineage/sepolicy/mosey/vendor
 include vendor/oneplus/dodge/BoardConfigVendor.mk
 
 BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
+BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
 
 # Fusion light sensor
 TARGET_USES_OPLUS_FUSIONLIGHT := true
